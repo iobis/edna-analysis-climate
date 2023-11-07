@@ -1,0 +1,14 @@
+{
+  "hash": "8f69928a2bb6ee898dae4ad9290b3a69",
+  "result": {
+    "markdown": "---\ntitle: \"Temperature ranges\"\nformat:\n  html:\n    toc: true\n---\n\n\nAbout this site\n\n\n::: {.cell}\n\n```{.r .cell-code}\n1 + 1\n```\n\n::: {.cell-output .cell-output-stdout}\n```\n[1] 2\n```\n:::\n:::\n",
+    "supporting": [],
+    "filters": [
+      "rmarkdown/pagebreak.lua"
+    ],
+    "includes": {},
+    "engineDependencies": {},
+    "preserve": {},
+    "postProcess": true
+  }
+}

@@ -1,0 +1,14 @@
+/* css styles */
+.navbar-logo {
+    max-height: 35px;
+    width: auto;
+    padding-right: 16px;
+}
+
+.help-box {
+  border-radius: 25px;
+  background: linear-gradient(90deg, #020024 0%, #090979 35%, #00d4ff 100%);
+  padding: 20px;
+  width: 200px;
+  height: auto;
+}

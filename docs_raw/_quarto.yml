@@ -1,0 +1,27 @@
+project:
+  type: website
+  output-dir: ../docs
+
+website:
+  title: "Temperature analysis of Marine Heritage Sites"
+  description: "Analysis of sea temperature profile and trends in the MHS, as part of the eDNA expeditions project"
+  repo-url: "github.com/iobis/"
+  repo-subdir: "marineheritage_sst"
+  
+  navbar:
+    title: "MHS|SST"
+    logo: logo.png
+    logo-alt: "OBIS"
+    left:
+      - href: index.qmd
+        text: Home
+      - thermal_profile.qmd
+
+format:
+  html:
+    theme: cosmo
+    css: styles.css
+    toc: true
+
+
+

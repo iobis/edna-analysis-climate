@@ -1,0 +1,8 @@
+---
+title: "Temperature profile of sites"
+listing:
+  contents: sites
+  type: grid
+  sort: "title"
+  fields: [image, title]
+---
