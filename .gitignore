@@ -54,3 +54,7 @@ codes/drafts/
 data/
 
 functions/drafts/
+
+*.zip
+
+temp/

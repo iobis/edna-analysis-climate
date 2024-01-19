@@ -126,11 +126,23 @@ proc <- job::job({
              cat("File already processed, skipping.\n")
            } else {
              r <- rast(fname)
-             r_dat <- as.data.frame(r, xy = TRUE, time = TRUE, wide = FALSE)
-             r_dat <- subset(r_dat, select = -layer)
+             r_dat <- as.data.frame(r, xy = TRUE, time = TRUE)
+             r_dat <- r_dat %>%
+               pivot_longer(3:length(.), names_to = "time", values_to = "values") %>%
+               mutate(layer = gsub("\\..*", "", names(r))[1])
              arrow::write_parquet(r_dat, outfile, compression = "gzip")
            }
            
            return(invisible(NULL))
          })
+  
+  lf <- list.files(outfolder, full.name = T, pattern = "\\.parquet")
+  base <- list.files(outfolder, full.name = T, pattern = "\\.nc")[1]
+  
+  zip("temperature_dayly.zip", c(lf, base))
+  
+  job::export("none")
 })
+
+
+

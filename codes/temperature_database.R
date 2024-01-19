@@ -1,3 +1,11 @@
+#################### eDNA expeditions - scientific analysis ####################
+########################## Environmental data download #########################
+# January of 2024
+# Author: Silas C. Principe
+# Contact: s.principe@unesco.org
+#
+######################### Add temperature on database ##########################
+
 # Load packages ----
 library(dplyr)
 library(future)
@@ -5,11 +13,17 @@ library(h3jsr)
 library(storr)
 library(terra)
 library(furrr)
+library(ggplot2)
+library(DBI)
 
 # Define settings ----
 h3_res <- 7
 
 # Get H3 indexes for environmental raster ----
+
+# Environmental layers are downloaded from Bio-ORACLE v3 
+# (through the package biooracler)
+
 # Get a base raster
 f <- list.files("~/Research/mpa_europe/mpaeu_sdm/data/env/current/",
                 full.names = T)
@@ -109,6 +123,9 @@ sum(unlist(h3_agg))
 
 
 # Add to database ----
+# Information on how to obtain the database are available on
+# https://github.com/iobis/protectedseas-statistics
+
 sqlite_file <- "~/Downloads/protectedseas/database.sqlite"
 con <- dbConnect(RSQLite::SQLite(), sqlite_file)
 
@@ -116,6 +133,8 @@ purrr::map(1:length(ids), function(x) {
   env_st$get(as.character(x)) %>%
     dbWriteTable(con, "env_current", ., append = TRUE)
 }, .progress = TRUE)
+
+dbSendQuery(con, glue::glue("create index env_current_h3 on env_current(h3)"))
 
 dbDisconnect(con)
 
@@ -155,8 +174,6 @@ species_points <- sf::st_as_sf(h3jsr::cell_to_point(obis_species$h3))
 species_points <- bind_cols(species_points, obis_species)
 
 base <- rnaturalearth::ne_countries(returnclass = "sf")
-
-library(ggplot2)
 
 ggplot() +
   geom_sf(data = base, fill = "grey90") +

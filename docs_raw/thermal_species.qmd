@@ -1,0 +1,24 @@
+---
+title: "Temperature profile of species"
+---
+
+:::{.column-page}
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(DT)
+library(storr)
+library(dplyr)
+library(tidyr)
+
+st <- storr_rds("../data/speciestemp_storr")
+
+all_species <- st$mget(st$list())
+
+all_species <- bind_rows(all_species) %>%
+  separate_wider_delim(cols = variable, names = c("variable", "baseline", "depth", "variant"),
+          delim = "_") %>%
+  select(-baseline) %>%
+  mutate(across(4:10, round, 2))
+
+datatable(all_species, filter = 'top')
+```
+:::

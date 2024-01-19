@@ -392,6 +392,13 @@
     "text": "This site will portray the temperature analysis of the eDNA project."
   },
   {
+    "objectID": "thermal_species.html",
+    "href": "thermal_species.html",
+    "title": "Temperature profile of species",
+    "section": "",
+    "text": "library(DT)\nlibrary(storr)\nlibrary(dplyr)\n\n\nAttaching package: 'dplyr'\n\n\nThe following objects are masked from 'package:stats':\n\n    filter, lag\n\n\nThe following objects are masked from 'package:base':\n\n    intersect, setdiff, setequal, union\n\nlibrary(tidyr)\n\nst &lt;- storr_rds(\"../data/speciestemp_storr\")\n\nall_species &lt;- st$mget(st$list())\n\nall_species &lt;- bind_rows(all_species) %&gt;%\n  separate_wider_delim(cols = variable, names = c(\"variable\", \"baseline\", \"depth\", \"variant\"),\n          delim = \"_\") %&gt;%\n  select(-baseline) %&gt;%\n  mutate(across(4:10, round, 2))\n\nWarning: There was 1 warning in `mutate()`.\nℹ In argument: `across(4:10, round, 2)`.\nCaused by warning:\n! The `...` argument of `across()` is deprecated as of dplyr 1.1.0.\nSupply arguments directly to `.fns` through an anonymous function instead.\n\n  # Previously\n  across(a:b, mean, na.rm = TRUE)\n\n  # Now\n  across(a:b, \\(x) mean(x, na.rm = TRUE))\n\ndatatable(all_species, filter = 'top')\n\nWarning in instance$preRenderHook(instance): It seems your data is too big for\nclient-side DataTables. You may consider server-side processing:\nhttps://rstudio.github.io/DT/server.html"
+  },
+  {
     "objectID": "thermal_profile.html",
     "href": "thermal_profile.html",
     "title": "Temperature profile of sites",

@@ -16,6 +16,7 @@ website:
       - href: index.qmd
         text: Home
       - thermal_profile.qmd
+      - thermal_species.qmd
 
 format:
   html:

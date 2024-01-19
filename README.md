@@ -24,7 +24,24 @@ Oxygen data download proceeded the same way as temperature (use the code with th
 
 ### Data processing
 
+__Marine heat waves and Cold spells__
+
 Data analysis for Marine Heat Waves and Cold Spells was done using the package [`heatwaveR`](https://robwschlegel.github.io/heatwaveR/). More details to be added after the workshop.
+
+__Temperature by species__
+
+- `get_edna_marinespecies.R`: aggregate species list from the eDNA project downloaded from the repository https://github.com/iobis/edna-species-lists
+- `temperature_database.R`: aggregate temperature/environmental layers to the OBIS/GBIF database (see details for the database here https://github.com/iobis/protectedseas-statistics)
+- `get_sst_marinespecies.R`: extract temperature information for all species listed on the sites
+- `plot_sst_marinespecies.R`: plot temperature information for a selected species
+
+There is also a function on the `functions` folder, `query_sst_marinespecies.R`, that can be used to query full data or summaries of temperature for a species (using the database).
+
+__Others__
+
+- `get_depthprofiles.R`: see which is the actual depth that was used when obtaining the data from Copernicus
+- `generate_quarto_sites.R`: generate quarto pages by site
+
 
 ----
 
