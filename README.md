@@ -6,7 +6,7 @@ This repository documents the process to obtain and analyse environmental inform
 - SST: [Global Ocean Physics Reanalysis](https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_PHY_001_030/description)
 - Oxygen: [Global Ocean Biogeochemistry Hindcast](https://data.marine.copernicus.eu/product/GLOBAL_MULTIYEAR_BGC_001_029/description)
 
-You can see the live page at https://iobis.github.io/marineheritage_sst
+You can see the live page at https://iobis.github.io/marineheritage-sst
 
 ## Codes
 
