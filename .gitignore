@@ -52,9 +52,13 @@ rsconnect/
 codes/drafts/
 
 data/
+results/
 
 functions/drafts/
 
 *.zip
 
 temp/
+
+*_storr
+*.parquet

@@ -33,7 +33,7 @@ __Temperature by species__
 - `get_edna_marinespecies.R`: aggregate species list from the eDNA project downloaded from the repository https://github.com/iobis/edna-species-lists
 - `temperature_database.R`: aggregate temperature/environmental layers to the OBIS/GBIF database (see details for the database here https://github.com/iobis/protectedseas-statistics)
 - `get_sst_marinespecies.R`: extract temperature information for all species listed on the sites
-- `plot_sst_marinespecies.R`: plot temperature information for a selected species
+- `get_sst_sites.R`: extract temperature information for each site (collection site, not _higherGeography_)
 
 There is also a function on the `functions` folder, `query_sst_marinespecies.R`, that can be used to query full data or summaries of temperature for a species (using the database).
 
@@ -41,7 +41,13 @@ __Others__
 
 - `get_depthprofiles.R`: see which is the actual depth that was used when obtaining the data from Copernicus
 - `generate_quarto_sites.R`: generate quarto pages by site
+- `plot_sst_marinespecies.R`: plot temperature information for a selected species
 
+## Data analysis
+
+After retrieving temperature information for each species occurrence from OBIS/GBIF (aggregated by H3 cells on a resolution of 7), we generate a table with the different quantiles for each species. This is done still on the `get_sst_marinespecies.R` script. The same data is obtained for each site.
+
+We join both tables to analyse the thermal limits for each species and to assess how species in each site might be at risk by climate change. This steps are done on the `analysis_sst_species.R`
 
 ----
 

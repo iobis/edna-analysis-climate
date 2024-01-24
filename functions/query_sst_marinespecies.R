@@ -32,6 +32,9 @@ query_sst <- function(species,
                       depth = NULL,
                       variant = NULL){
   library(DBI)
+  library(dplyr)
+  library(tidyr)
+  library(data.table)
   
   database <- "~/Downloads/protectedseas/database.sqlite"
   con <- dbConnect(RSQLite::SQLite(), database)
@@ -107,20 +110,40 @@ query_sst <- function(species,
     warning("No results found for the species")
   } else {
     if (return_summary) {
-      q25_fun <- function(x) quantile(x, .25)
-      q75_fun <- function(x) quantile(x, .75)
+      # q25_fun <- function(x) quantile(x, .25)
+      # q75_fun <- function(x) quantile(x, .75)
+      # final_result <- all_result %>%
+      #   select(-h3, -species) %>%
+      #   summarise(across(starts_with("thetao"),
+      #                    list(max = max, min = min,
+      #                         mean = mean, sd = sd, median = median,
+      #                         q25 = q25_fun, q75 = q75_fun),
+      #                    .names = "{.col}${.fn}")) %>%
+      #   pivot_longer(1:length(.), names_to = "variable", values_to = "value") %>%
+      #   separate_wider_delim(cols = "variable", names = c("variable", "variant"),
+      #                        delim = "$") %>%
+      #   pivot_wider(names_from = variant, values_from = value) %>%
+      #   mutate(scientificName = species)
+      
+      quantile_df <- function(x, probs = c(0, 0.01, 0.05, 0.1, 0.25,
+                                           0.5,
+                                           0.75, 0.9, 0.95, 0.99, 1)) {
+        res <- tibble(metric = c(paste0("q_", probs), "mean", "sd"), 
+                      value = c(quantile(x, probs), mean(x), sd(x)))
+        res
+      }
+      
       final_result <- all_result %>%
         select(-h3, -species) %>%
-        summarise(across(starts_with("thetao"),
-                         list(max = max, min = min,
-                              mean = mean, sd = sd, median = median,
-                              q25 = q25_fun, q75 = q75_fun),
-                         .names = "{.col}${.fn}")) %>%
-        pivot_longer(1:length(.), names_to = "variable", values_to = "value") %>%
-        separate_wider_delim(cols = "variable", names = c("variable", "variant"),
-                             delim = "$") %>%
-        pivot_wider(names_from = variant, values_from = value) %>%
+        pivot_longer(1:length(.), names_to = "variable", values_to = "values") %>%
+        group_by(variable) %>%
+        reframe(quantile_df(values)) %>%
+        separate_wider_delim(cols = "variable",
+                             names = c("variable", "baseline", "depth", "variant"),
+                             delim = "_") %>%
+        select(-baseline, -variable) %>%
         mutate(scientificName = species)
+        
     } else {
       final_result <- all_result
     }

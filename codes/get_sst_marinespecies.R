@@ -4,26 +4,24 @@
 # Author: Silas C. Principe
 # Contact: s.principe@unesco.org
 #
-###################### Retrieve SST summaries for species ######################
+############# Retrieve SST summaries for species (full version) ################
 
 # Load packages ----
 library(DBI)
-library(data.table)
 library(dplyr)
 library(tidyr)
-library(storr)
+library(parquet)
+fs::dir_create("results")
 
-
-# Load files ----
-species_list <- readRDS("data/marine_species.rds")
-
+# Load files/settings ----
+# Database
 database <- "~/Downloads/protectedseas/database.sqlite"
+con <- dbConnect(RSQLite::SQLite(), database)
 
+# Settings 
 gbif_occurrence_table <- "gbif_occurrence"
 obis_occurrence_table <- "obis_occurrence"
 
-
-# Select environmental variables ----
 env_vars <- c(
   "thetao_baseline_depthmax_max", "thetao_baseline_depthmax_mean",
   "thetao_baseline_depthmax_min", "thetao_baseline_depthmean_max",
@@ -32,99 +30,87 @@ env_vars <- c(
   "thetao_baseline_depthsurf_min"
 )
 
-
-st <- storr_rds("data/speciestemp_storr")
-
-
-# Get temperature for each species  ----
-job::job(
-  {
-    con <- dbConnect(RSQLite::SQLite(), database)
-    
-    for (sp in 1:nrow(species_list)) {
-      tsp <- species_list[sp,]
-      cli::cat_line("Running species ", cli::col_cyan(tsp$scientificName))
-      
-      cli::cli_progress_step("Querying OBIS")
-      
-      sel_species <- tsp$scientificName
-      
-      obis_query <- glue::glue("
-      with filtered_data as (
-        select species, h3
-        from {obis_occurrence_table}
-        where {obis_occurrence_table}.species = '{sel_species}'
-        )
-      select species, filtered_data.h3, {paste(env_vars, collapse = ', ')}
-      from filtered_data
-      inner join env_current on filtered_data.h3 = env_current.h3;
-                         ")
-      
-      obis_res <- dbSendQuery(con, obis_query)
-      obis_species <- dbFetch(obis_res)
-      
-      cli::cli_progress_step("Querying GBIF")
-      sel_species <- ifelse(!is.na(tsp$scientificName_gbif),
-                            ifelse(
-                              tsp$scientificName != tsp$scientificName_gbif,
-                              tsp$scientificName_gbif,
-                              tsp$scientificName
-                            ), tsp$scientificName)
-      
-      gbif_query <- glue::glue("
-      with filtered_data as (
-        select species, h3
-        from {gbif_occurrence_table}
-        where {gbif_occurrence_table}.species = '{sel_species}'
-        )
-      select species, filtered_data.h3, {paste(env_vars, collapse = ', ')}
-      from filtered_data
-      inner join env_current on filtered_data.h3 = env_current.h3;
-                         ")
-      
-      gbif_res <- dbSendQuery(con, gbif_query)
-      gbif_species <- dbFetch(gbif_res)
-      
-      all_result <- bind_rows(obis_species, gbif_species)
-      
-      if (nrow(all_result) == 0) {
-        all_result <- NULL
-      } else {
-        q25_fun <- function(x) quantile(x, .25)
-        q75_fun <- function(x) quantile(x, .75)
-        all_result <- all_result %>%
-          select(-h3, -species) %>%
-          summarise(across(starts_with("thetao"),
-                           list(max = max, min = min,
-                                mean = mean, sd = sd, median = median,
-                                q25 = q25_fun, q75 = q75_fun),
-                           .names = "{.col}${.fn}")) %>%
-          pivot_longer(1:length(.), names_to = "variable", values_to = "value") %>%
-          separate_wider_delim(cols = "variable", names = c("variable", "variant"),
-                               delim = "$") %>%
-          pivot_wider(names_from = variant, values_from = value) %>%
-          mutate(scientificName = tsp$scientificName,
-                 AphiaID = tsp$AphiaID)
-        
-        
-      }
-      
-      st$set(sp, all_result)
-      
-      cli::cli_progress_done()
-      
-    }
-    
-    dbDisconnect(con)
-    job::export("none")
-  }
+# Load species list
+species_list <- bind_rows(
+  lapply(list.files("data/species_list_full", full.names = T), read.csv)
 )
+species_list <- species_list %>%
+  select(species, AphiaID, source_obis, source_gbif, source_dna, group) %>%
+  distinct(species, .keep_all = T)
 
+sel_species <- species_list$species
+sel_species <- paste0("'", sel_species, "'", collapse = ", ")
 
-# Get ecological information of species
-job::job({
-  obissdm::mp_get_ecoinfo(species_list = species_list$AphiaID)
-  job::export("none")
-})
+obis_query <- glue::glue("
+      with filtered_data as (
+        select species, h3, records
+        from {obis_occurrence_table}
+        where {obis_occurrence_table}.species in ({sel_species})
+        )
+      select species, filtered_data.h3, filtered_data.records, {paste(env_vars, collapse = ', ')}
+      from filtered_data
+      inner join env_current on filtered_data.h3 = env_current.h3;
+                         ")
+
+obis_res <- dbSendQuery(con, obis_query)
+obis_species <- dbFetch(obis_res)
+
+gbif_query <- glue::glue("
+      with filtered_data as (
+        select species, h3, records
+        from {gbif_occurrence_table}
+        where {gbif_occurrence_table}.species in ({sel_species})
+        )
+      select species, filtered_data.h3, filtered_data.records, {paste(env_vars, collapse = ', ')}
+      from filtered_data
+      inner join env_current on filtered_data.h3 = env_current.h3;
+                         ")
+
+gbif_res <- dbSendQuery(con, gbif_query)
+gbif_species <- dbFetch(gbif_res)
+
+all_result <- bind_rows(obis_species, gbif_species)
+
+# Get summaries
+rec_by_sp <- all_result %>%
+  group_by(species) %>%
+  summarise(records = sum(records))
+
+rec_by_h3 <- all_result %>%
+  group_by(h3) %>%
+  summarise(records = sum(records))
+
+species_by_h3 <- all_result %>%
+  group_by(h3) %>%
+  distinct(species, .keep_all = T) %>%
+  summarise(n_species = n())
+
+quantile_df <- function(x, probs = c(0, 0.01, 0.05, 0.1, 0.25,
+                                     0.5,
+                                     0.75, 0.9, 0.95, 0.99, 1)) {
+  res <- tibble(metric = c(paste0("q_", probs), "mean", "sd"), 
+                value = c(quantile(x, probs), mean(x), sd(x)))
+  res
+}
+
+final_result <- all_result %>%
+  select(-h3, -records) %>%
+  pivot_longer(2:length(.), names_to = "variable", values_to = "values") %>%
+  group_by(variable, species) %>%
+  reframe(quantile_df(values)) %>%
+  separate_wider_delim(cols = "variable",
+                       names = c("variable", "baseline", "depth", "variant"),
+                       delim = "_") %>%
+  select(-baseline, -variable)
+
+write_parquet(final_result, "results/species_tsummaries.parquet")
+write_parquet(rec_by_sp, "results/records_by_sp.parquet")
+write_parquet(rec_by_h3, "results/records_by_h3.parquet")
+write_parquet(species_by_h3, "results/species_by_h3.parquet")
+write_parquet(species_list, "results/species_list.parquet")
+
+dbDisconnect(con)
+
+rm(list = ls());gc()
 
 ### END
