@@ -10,24 +10,28 @@
 library(DBI)
 library(dplyr)
 library(tidyr)
-library(parquet)
+library(arrow)
+library(terra)
 fs::dir_create("results")
 
 # Load files/settings ----
 # Database
-database <- "~/Downloads/protectedseas/database.sqlite"
+database <- "~/Research/mpa_europe/mpaeu_shared/occurrence_h3_db.sqlite"
 con <- dbConnect(RSQLite::SQLite(), database)
 
 # Settings 
-gbif_occurrence_table <- "gbif_occurrence"
-obis_occurrence_table <- "obis_occurrence"
+occurrence_table <- "occurrence"
 
 env_vars <- c(
-  "thetao_baseline_depthmax_max", "thetao_baseline_depthmax_mean",
-  "thetao_baseline_depthmax_min", "thetao_baseline_depthmean_max",
-  "thetao_baseline_depthmean_mean", "thetao_baseline_depthmean_min",
-  "thetao_baseline_depthsurf_max", "thetao_baseline_depthsurf_mean",
-  "thetao_baseline_depthsurf_min"
+  "thetao_baseline_depthmax_mean",
+  "thetao_baseline_depthmean_mean",
+  "thetao_baseline_depthsurf_mean",
+  "thetao_baseline_depthmax_min",
+  "thetao_baseline_depthmean_min",
+  "thetao_baseline_depthsurf_min",
+  "thetao_baseline_depthmax_max",
+  "thetao_baseline_depthmean_max",
+  "thetao_baseline_depthsurf_max"
 )
 
 # Load species list
@@ -41,37 +45,43 @@ species_list <- species_list %>%
 sel_species <- species_list$species
 sel_species <- paste0("'", sel_species, "'", collapse = ", ")
 
-obis_query <- glue::glue("
-      with filtered_data as (
-        select species, h3, records
-        from {obis_occurrence_table}
-        where {obis_occurrence_table}.species in ({sel_species})
-        )
-      select species, filtered_data.h3, filtered_data.records, {paste(env_vars, collapse = ', ')}
-      from filtered_data
-      inner join env_current on filtered_data.h3 = env_current.h3;
+
+# Query database ----
+db_query <- glue::glue("
+      select species, h3, records
+      from {occurrence_table}
+      where species in ({sel_species})
                          ")
 
-obis_res <- dbSendQuery(con, obis_query)
-obis_species <- dbFetch(obis_res)
+db_res <- dbSendQuery(con, db_query)
+db_species <- dbFetch(db_res)
 
-gbif_query <- glue::glue("
-      with filtered_data as (
-        select species, h3, records
-        from {gbif_occurrence_table}
-        where {gbif_occurrence_table}.species in ({sel_species})
-        )
-      select species, filtered_data.h3, filtered_data.records, {paste(env_vars, collapse = ', ')}
-      from filtered_data
-      inner join env_current on filtered_data.h3 = env_current.h3;
-                         ")
 
-gbif_res <- dbSendQuery(con, gbif_query)
-gbif_species <- dbFetch(gbif_res)
+# Get environmental data ----
+# Load environmental layers
+env <- rast(paste0("~/Research/mpa_europe/mpaeu_sdm/data/env/current/", env_vars, ".tif"))
+names(env) <- env_vars
 
-all_result <- bind_rows(obis_species, gbif_species)
+# Get H3 ids from the environmental layer
+biooracle_h3 <- open_dataset("data/biooracle_h3id.parquet")
 
-# Get summaries
+bio_h3_sel <- biooracle_h3 %>%
+  filter(h3 %in% unique(db_species$h3)) %>%
+  select(cell, h3) %>%
+  collect()
+
+# Extract env data
+env_ext <- terra::extract(env, y = as.vector(bio_h3_sel$cell)) %>%
+  bind_cols(bio_h3_sel) %>%
+  select(-cell) %>%
+  group_by(h3) %>%
+  summarise(across(everything(), ~ mean(.x, na.rm = TRUE)))
+
+# Join to species table
+all_result <- left_join(db_species, env_ext)
+
+
+# Get summaries ----
 rec_by_sp <- all_result %>%
   group_by(species) %>%
   summarise(records = sum(records))
@@ -88,8 +98,12 @@ species_by_h3 <- all_result %>%
 quantile_df <- function(x, probs = c(0, 0.01, 0.05, 0.1, 0.25,
                                      0.5,
                                      0.75, 0.9, 0.95, 0.99, 1)) {
-  res <- tibble(metric = c(paste0("q_", probs), "mean", "sd"), 
-                value = c(quantile(x, probs), mean(x), sd(x)))
+  res <- tibble(metric = c(paste0("q_", probs), "mean", "sd", "no_data", "with_data"), 
+                value = c(quantile(x, probs, na.rm = T),
+                          mean(x, na.rm = T),
+                          sd(x, na.rm = T),
+                          sum(is.na(x)),
+                          sum(!is.na(x))))
   res
 }
 

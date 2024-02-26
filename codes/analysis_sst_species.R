@@ -20,7 +20,7 @@ temp_sp <- open_dataset("results/species_tsummaries.parquet")
 
 temp_sp_filt <- temp_sp %>%
   filter(depth == "depthsurf") %>%
-  filter(variant == "mean") %>%
+  filter(variant == "max") %>%
   collect()
 
 # Temperature on sites
@@ -49,7 +49,8 @@ species_rec <- read_parquet("results/records_by_sp.parquet")
 # Bind species temperature
 temp_sp_wide <- temp_sp_filt %>%
   pivot_wider(names_from = metric, values_from = value) %>%
-  select(-depth, -variant)
+  select(-depth, -variant) %>%
+  relocate(no_data, .after = with_data)
 
 sites_list_binded <- sites_list_distinct %>%
   left_join(temp_sp_wide) %>%
@@ -88,7 +89,8 @@ sites_list_binded <- sites_list_binded %>%
     where %in% c(6, 5, 7) ~ "Both"
   ))
 
-# Save a copy
+
+# Save file
 write_parquet(sites_list_binded, "results/tsummaries_aggregated.parquet")
 
 
@@ -138,3 +140,5 @@ plot_site <- function(site) {
 }
 
 plot_site(3)
+
+### END

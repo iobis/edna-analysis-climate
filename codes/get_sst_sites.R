@@ -130,3 +130,5 @@ final_list <- final_list %>%
                       ifelse(grepl("_mean", variable), "mean", "min")))
 
 arrow::write_parquet(final_list, "results/sites_tsummaries.parquet")
+
+### END
