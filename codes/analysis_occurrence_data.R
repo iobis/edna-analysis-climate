@@ -21,13 +21,12 @@ speciestherm<-read_parquet("results/species_tsummaries.parquet")
 
 speciesthermdt<-data.table(speciestherm)
 
-speciesthermsst<-speciesthermdt[depth=="depthsurf" & variant=="max",,]
+speciesthermsst<-speciesthermdt[depth=="depthsurf" & variant=="mean",,]
 speciesthermsstc<-dcast(speciesthermdt,species~metric,value.var = "value",fun=mean)
 
 ## Site by species occurrence table
 
 speciesthermsite<-read_parquet("results/tsummaries_aggregated.parquet")
-speciesthermsite$where[is.na(speciesthermsite$where)] <- "Both" # correct NA that should be both
 
 speciesthermsitedt<-data.table(speciesthermsite)
 

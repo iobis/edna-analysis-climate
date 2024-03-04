@@ -19,6 +19,7 @@ library(furrr)
 # Settings
 outdir <- "results/mhw/"
 fs::dir_create(outdir)
+set.seed(2024)
 
 
 # Load data ----
@@ -66,7 +67,7 @@ plan(multisession, workers = 4)
 
 retrieve_mhw <- function(id) {
   
-  depth_val <- 0
+  depth_val <- 0 # To try other depths change here
   
   mhs_sel <- mhs_info[mhs_info$area == id,]
   
@@ -89,6 +90,11 @@ retrieve_mhw <- function(id) {
     dates <- as.Date(dates)
     
     valid_cells <- as.data.frame(tvar[[1]], cell = T, xy = T)[,1:3]
+    
+    if (nrow(valid_cells) > 2000) {
+      sa <- sample(1:nrow(valid_cells), 2000)
+      valid_cells <- valid_cells[sa,]
+    }
     
     for (i in 1:nrow(valid_cells)) {
       wdf <- unname(unlist(tvar[valid_cells$cell[i]]))
@@ -115,6 +121,6 @@ retrieve_mhw <- function(id) {
   
 }
 
-future_map(unique(all_sites_filt$area), retrieve_mhw, .progress = T)
+future_map(unique(all_sites_filt$area), retrieve_mhw, .progress = T, .options = furrr_options(seed = T))
 
 ### END

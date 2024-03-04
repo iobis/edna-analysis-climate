@@ -20,7 +20,7 @@ temp_sp <- open_dataset("results/species_tsummaries.parquet")
 
 temp_sp_filt <- temp_sp %>%
   filter(depth == "depthsurf") %>%
-  filter(variant == "max") %>%
+  filter(variant == "mean") %>%
   collect()
 
 # Temperature on sites
