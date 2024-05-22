@@ -1,0 +1,75 @@
+---
+title: "SDMs MHS"
+format: pdf
+execute:
+  echo: false
+editor: visual
+---
+
+## Example of application
+
+Considering only two species to see if its worthwhile:
+
+1.  `r worrms::wm_id2name(217352)`
+2.  `r worrms::wm_id2name(217426)`
+
+Load maps and points:
+
+```{r}
+suppressPackageStartupMessages(library(terra))
+suppressPackageStartupMessages(library(arrow))
+terraOptions(progress=0)
+
+species_a <- rast("results/sdms/taxonid=217352/model=mhs/predictions/taxonid=217352_model=mhs_method=maxnet_cog.tif")
+species_b <- rast("results/sdms/taxonid=217426/model=mhs/predictions/taxonid=217426_model=mhs_method=maxnet_cog.tif")
+
+sp_a_pts <- read_parquet("results/sdms/taxonid=217352/model=mhs/taxonid=217352_model=mhs_what=fitocc.parquet")
+sp_b_pts <- read_parquet("results/sdms/taxonid=217426/model=mhs/taxonid=217426_model=mhs_what=fitocc.parquet")
+
+par(mfrow=c(1,2))
+plot(species_a[[1]], range = c(0,1));points(sp_a_pts, pch = 20, cex = .5)
+plot(species_b[[1]], range = c(0,1));points(sp_b_pts, pch = 20, cex = .5)
+```
+
+Apply masks to isolate to "native" areas:
+
+```{r}
+sp_a_mask <- rast("results/sdms/taxonid=217352/model=mhs/predictions/taxonid=217352_model=mhs_mask_cog.tif")
+sp_b_mask <- rast("results/sdms/taxonid=217426/model=mhs/predictions/taxonid=217426_model=mhs_mask_cog.tif")
+
+species_a <- mask(species_a, sp_a_mask$native_ecoregions)
+species_b <- mask(species_b, sp_b_mask$native_ecoregions)
+
+par(mfrow=c(1,2))
+plot(species_a[[1]], range = c(0,1));points(sp_a_pts, pch = 20, cex = .5)
+plot(species_b[[1]], range = c(0,1));points(sp_b_pts, pch = 20, cex = .5)
+```
+
+Convert to binary format (maybe we can do without it also - in fact, it may be a better choice, but interpretation is a little bit more tricky):
+
+```{r}
+sp_a_th <- read_parquet("results/sdms/taxonid=217352/model=mhs/metrics/taxonid=217352_model=mhs_what=thresholds.parquet")
+sp_b_th <- read_parquet("results/sdms/taxonid=217426/model=mhs/metrics/taxonid=217426_model=mhs_what=thresholds.parquet")
+
+species_a[species_a < mean(sp_a_th$p10[sp_a_th$model == "maxent"])] <- 0
+species_b[species_b < mean(sp_b_th$p10[sp_b_th$model == "maxent"])] <- 0
+
+species_a[species_a > 0] <- 1
+species_b[species_b > 0] <- 1
+
+par(mfrow=c(1,2))
+plot(species_a[[1]], range = c(0,1));points(sp_a_pts, pch = 20, cex = .5)
+plot(species_b[[1]], range = c(0,1));points(sp_b_pts, pch = 20, cex = .5)
+```
+
+Sum results to get a "richness" indicator:
+
+```{r}
+multi_sp <- sum(species_a, species_b, na.rm = T)
+
+par(mfrow = c(1,2))
+plot(multi_sp[[1]], main = "Current period")
+plot(multi_sp$ssp245_dec50, main = "SSP2 (2050)")
+```
+
+Once we aggregate multiple species, we can assess how much richness will change in the WHSs.

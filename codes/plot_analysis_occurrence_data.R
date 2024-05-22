@@ -102,7 +102,105 @@ legend("bottomleft",legend=levels(as.factor(ctihighergeog$where)),inset=0.02,col
           legend.title = element_blank()))
   
 library(patchwork)
-p1 + p2 + p3 + patchwork::plot_layout(guides = "collect")
+p1 + p2 + p3 + patchwork::plot_layout(guides = "collect") + plot_annotation(tag_levels = 'A')
+
+ggsave("figures/thermal_comp_allsp.png", width = 14, height = 5)
+
+
+### ALTERNATIVE PLOT
+for (i in 1:100) {
+  
+  resampled <- speciesthermsitedt[, list(
+    q_0.5 = sample(q_0.5, .N, replace = T),
+    q_0.9 = sample(q_0.9, .N, replace = T),
+    q_0.1 = sample(q_0.1, .N, replace = T),
+    site_current = sample(site_current, .N, replace = T)
+    #resample = 1:.N#sample(1:.N, .N, replace = T)
+  ), by = c("higherGeography", "where")]
+  
+  ctihighergeog_temp <- resampled[, list(
+    ctiavg = mean(q_0.5),
+    sdcti = sd(q_0.5),
+    str = mean(q_0.9 - q_0.1),
+    sstavg = mean(site_current),
+    nspp = .N
+  ), by = c("higherGeography", "where")]
+  
+  if (i == 1) {
+    ctihighergeog_boot <- ctihighergeog_temp
+  } else {
+    ctihighergeog_boot <- rbind(ctihighergeog_boot, ctihighergeog_temp)
+  }
+  
+}
+
+
+
+### Bootstrap version
+ctihighergeog$higherGeography <- substr(ctihighergeog$higherGeography, 1, 10)
+ctihighergeog$higherGeography <- factor(ctihighergeog$higherGeography,
+                                        levels = unique(ctihighergeog$higherGeography[order(ctihighergeog$sstavg)]))
+
+ctihighergeog_boot$higherGeography <- substr(ctihighergeog_boot$higherGeography, 1, 10)
+ctihighergeog_boot$higherGeography <- factor(ctihighergeog_boot$higherGeography,
+                                             levels = levels(ctihighergeog$higherGeography))
+
+ctihighergeog_boot_sum <- ctihighergeog_boot[, list(
+  ctiavg_low = quantile(ctiavg, 0.25),
+  ctiavg_median = median(ctiavg),
+  ctiavg_high = quantile(ctiavg, 0.75),
+  sdcti_low = quantile(sdcti, 0.25),
+  sdcti_median = median(sdcti),
+  sdcti_high = quantile(sdcti, 0.75),
+  str_low = quantile(str, 0.25),
+  str_median = median(str),
+  str_high = quantile(str, 0.75),
+  nspp = mean(nspp)
+), by = c("higherGeography", "where")]
+
+ctihighergeog_sst <- ctihighergeog_boot[,list(
+  sstavg = mean(sstavg)
+), by = c("higherGeography", "where")]
+ctihighergeog_sst$what = "Average site SST"
+
+(p1_boot <- ggplot() +
+  geom_point(data = ctihighergeog_sst, aes(x = higherGeography, y = sstavg, fill = what),
+             shape = 15, size = 4, alpha = .1) +
+  geom_jitter(data = ctihighergeog_boot, aes(x = higherGeography, y = ctiavg, color = where), 
+              shape = 16, size = 1, alpha = .05,
+              position = position_jitterdodge(dodge.width = 0.5,
+                                              jitter.height = 0, jitter.width = 0.1)) +
+  geom_linerange(data = ctihighergeog_boot_sum,
+                 aes(x = higherGeography, ymin = ctiavg_low, ymax = ctiavg_high,
+                     color = where), linewidth = 1,
+                 position = position_dodge(width = 0.5)) +
+  geom_point(data = ctihighergeog, aes(x = higherGeography, y = ctiavg, color = where, size = nspp), 
+             shape = 16, position = position_dodge(width = 0.5), alpha = .6) +
+  scale_color_manual(values = c("#00c3c9",  "#f58000"), guide = "none") + #"#5151db",
+  scale_fill_manual(values = c("grey70")) +
+  scale_size(range = c(2,7), guide = "none") +
+  #guides(fill = guide_legend(override.aes = list(alpha = 1))) +
+  ylab("Temperature (°C)") + 
+  xlab(NULL) +
+  theme_light() +
+  coord_flip() +
+  theme(panel.grid = element_blank(),
+        panel.grid.major.y = element_line(colour = "grey90", linewidth = 0.3, linetype = 2),
+        legend.title = element_blank()))
+
+
+
+p1_boot + p2 + p3 + patchwork::plot_layout(guides = "collect") + plot_annotation(tag_levels = 'A')
+
+ggsave("figures/test_newcti_boot.png", width = 14, height = 5)
+
+
+
+
+
+
+
+
 
 ### Add taxon information
 

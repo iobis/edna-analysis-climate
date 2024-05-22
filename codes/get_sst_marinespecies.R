@@ -8,10 +8,13 @@
 
 # Load packages ----
 library(DBI)
+library(furrr)
+library(storr)
 library(dplyr)
 library(tidyr)
 library(arrow)
 library(terra)
+library(polars)
 fs::dir_create("results")
 
 # Load files/settings ----
@@ -65,15 +68,66 @@ names(env) <- env_vars
 # Get H3 ids from the environmental layer
 biooracle_h3 <- open_dataset("data/biooracle_h3id.parquet")
 
-bio_h3_sel <- biooracle_h3 %>%
-  filter(h3 %in% unique(db_species$h3)) %>%
+# Get unique h3 ids
+un_h3s <- unique(db_species$h3)
+
+# Get cells for those available
+bio_h3_presel <- biooracle_h3 %>%
+  filter(h3 %in% un_h3s) %>%
   select(cell, h3) %>%
   collect()
+
+# Get not available
+not_available <- un_h3s[!un_h3s %in% unique(bio_h3_presel$h3)]
+
+# Get disks
+# Create a temporary folder to hold disks
+fs::dir_create("t_disks")
+
+plan(multisession, workers = 8)
+not_available_h3_b <- split(not_available, as.integer((seq_along(not_available) - 1) / 2000))
+
+un_h3s_disk <- future_map(not_available_h3_b, function(x){
+  
+  bio_h3 <- open_dataset("data/biooracle_h3id.parquet")
+  
+  disk_cells <- lapply(x, function(z){
+    dc <- unlist(h3jsr::get_disk(z))
+    data.frame(h3_original = z, h3 = dc)
+  })
+  disk_cells <- bind_rows(disk_cells)
+  
+  pc <- bio_h3 %>%
+    filter(h3 %in% unique(disk_cells$h3)) %>%
+    select(cell, h3) %>%
+    collect()
+  
+  disk_cells <- left_join(disk_cells, pc) %>%
+    filter(!is.na(cell))
+  
+  write_parquet(disk_cells,
+                paste0("t_disks/", x[1], ".parquet"))
+  NULL
+}, .progress = T)
+
+# Aggregate expanded disks data
+disk_f <- open_dataset("t_disks/")
+disk_f <- disk_f %>%
+  collect()
+
+# Merge with previous one
+bio_h3_presel <- bio_h3_presel %>%
+  mutate(h3_original = h3) %>%
+  select(h3_original, h3, cell)
+
+bio_h3_sel <- bind_rows(disk_f, bio_h3_presel)
+
 
 # Extract env data
 env_ext <- terra::extract(env, y = as.vector(bio_h3_sel$cell)) %>%
   bind_cols(bio_h3_sel) %>%
-  select(-cell) %>%
+  select(-cell, -h3) %>%
+  rename(h3 = h3_original) %>%
   group_by(h3) %>%
   summarise(across(everything(), ~ mean(.x, na.rm = TRUE)))
 

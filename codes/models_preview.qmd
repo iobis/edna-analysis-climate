@@ -1,0 +1,376 @@
+---
+title: "eDNA climate analysis - models"
+format:
+  pdf:
+    toc: true
+---
+
+This document contain the preliminary models for the eDNA climate analysis.
+
+At the end of the document there is a section called **"Thermal limits: extracted X experimental"** where I compare our thermal limits with those obtained through experiments for a subset of species.
+
+## Percentage of affected species
+
+Question: considering a scenario of stability in species composition, how many species of each site will be affected by climate change, i.e. experience temperatures above their upper limits?
+
+Hypothesis: the proportion of affected species will increase in all scenarios, being higher on the worst case scenarios. That trend should be apparent in all sites, but certain sites will be more affected than others. Both databases and eDNA will capture that trend.
+
+```{r message=FALSE, warning=FALSE}
+library(arrow)
+library(data.table)
+library(lme4)
+```
+
+
+```{r}
+
+# Read species summaries 
+speciesthermsite <- read_parquet("../results/tsummaries_aggregated.parquet")
+
+# Convert to DT
+speciesthermsitedt <- data.table(speciesthermsite)
+speciesthermsitedt$where <- ifelse(speciesthermsitedt$where == "Both" | 
+                                     speciesthermsitedt$where == "OBIS/GBIF", "Databases", "eDNA")
+
+# Produce summaries
+sthighergeog <- speciesthermsitedt[,list(ctiavg=mean(q_0.5),
+                                                sdcti=sd(q_0.5),
+                                                str=mean(q_0.9-q_0.1),
+                                                sstavg=mean(site_current),
+                                                nspp=.N,
+                                                pgt90now=sum(site_current>q_0.9)/.N,
+                                                pgt90ssp1d50=sum(site_ssp126_dec50>q_0.9)/.N,
+                                                pgt90ssp1d100=sum(site_ssp126_dec100>q_0.9)/.N,
+                                                pgt90ssp2d50=sum(site_ssp245_dec50>q_0.9)/.N,
+                                                pgt90ssp2d100=sum(site_ssp245_dec100>q_0.9)/.N,
+                                                pgt90ssp3d50=sum(site_ssp370_dec50>q_0.9)/.N,
+                                                pgt90ssp3d100=sum(site_ssp370_dec100>q_0.9)/.N,
+                                                pgt90ssp4d50=sum(site_ssp460_dec50>q_0.9)/.N,
+                                                pgt90ssp4d100=sum(site_ssp460_dec100>q_0.9)/.N,
+                                                pgt90ssp5d50=sum(site_ssp585_dec50>q_0.9)/.N,
+                                                pgt90ssp5d100=sum(site_ssp585_dec100>q_0.9)/.N),
+                                          by=c("higherGeography","where")]
+
+head(sthighergeog)
+```
+
+Once we prepare the data we can make the models. We start by doing a simple linear regression.
+
+```{r}
+sthighergeog$where <- as.factor(sthighergeog$where)
+sthighergeog$higherGeography <- as.factor(sthighergeog$higherGeography)
+
+sthighergeog_l <- data.table(tidyr::pivot_longer(sthighergeog,
+                                                   cols = 8:18,
+                                                   names_to = "scenario", values_to = "paf"))
+
+sthighergeog_l50 <- sthighergeog_l[grepl("d50|now", scenario),,]
+sthighergeog_l100 <- sthighergeog_l[grepl("d100|now", scenario),,]
+
+sthighergeog_l50$scenario <- as.factor(sthighergeog_l50$scenario)
+sthighergeog_l100$scenario <- as.factor(sthighergeog_l100$scenario)
+
+boxplot(paf ~ scenario, data = sthighergeog_l50)
+
+paf_lm1 <- glm(paf ~ scenario, data = sthighergeog_l50, family = binomial(), weights = nspp)
+
+summary(paf_lm1)
+```
+
+Check the residuals:
+
+```{r fig.height=6}
+par(mfrow = c(2,2))
+plot(paf_lm1)
+```
+
+QQ plot is not good, but the rest is ok.
+
+Model considering the source of the data:
+
+```{r}
+paf_lm2 <- glm(paf ~ scenario + where, data = sthighergeog_l50, family = binomial(), weights = nspp)
+
+summary(paf_lm2)
+```
+
+Check the residuals:
+
+```{r fig.height=6}
+par(mfrow = c(2,2))
+plot(paf_lm2)
+```
+
+Try to include the interaction between "where" and "scenario":
+
+```{r}
+paf_lm3 <- glm(paf ~ scenario*where, data = sthighergeog_l50, family = binomial(), weights = nspp)
+
+summary(paf_lm3)
+```
+
+Check residuals:
+
+```{r fig.height=6}
+par(mfrow = c(2,2))
+plot(paf_lm3)
+```
+
+Try a Linear Mixed-Effects model. In this case, we will focus in modelling PAF ~ scenario, with "where" as a random effect.
+
+```{r}
+paf_lme1 <- glmer(paf ~ scenario + (1|where), data = sthighergeog_l50, family = binomial(),
+                  weights = nspp)
+
+summary(paf_lme1)
+```
+
+The source does explain some of the variation, but not a great amount compared to the scenarios.
+
+```{r}
+par(mfrow = c(1,2))
+plot(paf_lme1)
+qqnorm(resid(paf_lme1))
+qqline(resid(paf_lme1))
+```
+
+Try now a model with higherGeography as a random effect:
+
+```{r}
+paf_lme2 <- glmer(paf ~ scenario + (1|higherGeography), data = sthighergeog_l50, family = binomial(), weights = nspp)
+
+summary(paf_lme2)
+```
+
+In this case, the higherGeography have more influence on the values of PAF. This seems to be an interesting model to proceed with.
+
+Check residuals:
+
+```{r}
+par(mfrow = c(1,2))
+plot(paf_lme2)
+qqnorm(resid(paf_lme2))
+qqline(resid(paf_lme2))
+```
+
+Both models show the trend of increase in affected species as we go to the worst case scenarios.
+
+Try to include the temperature trend on the model:
+
+```{r}
+paf_lm_sst1 <- glm(paf ~ scenario + where + sstavg, data = sthighergeog_l50, family = binomial(), weights = nspp)
+
+summary(paf_lm_sst1)
+
+sthighergeog_l50_sc <- sthighergeog_l50
+sthighergeog_l50_sc$sstavg <- scale(sthighergeog_l50_sc$sstavg)
+
+paf_lme_sst1 <- glmer(paf ~ scenario + sstavg + (1|where), data = sthighergeog_l50_sc, family = binomial(), weights = nspp)
+
+summary(paf_lme_sst1)
+
+paf_gam_sst1 <- mgcv::gam(paf ~ scenario + where + s(sstavg, k = 4), data = sthighergeog_l50, family = binomial(), weights = nspp)
+
+summary(paf_gam_sst1)
+```
+
+
+### Removing species close to the current temperature limits (tropical)
+
+```{r}
+sst <- terra::rast("~/Research/mpa_europe/mpaeu_sdm/data/env/current/thetao_baseline_depthsurf_mean.tif")
+sst <- as.data.frame(sst)
+
+plot(density(sst$thetao_mean))
+
+sst_q <- quantile(sst$thetao_mean, 0.9) # We can try other values
+
+speciesthermsitedt <- speciesthermsitedt[q_1 <= sst_q,,]
+
+sthighergeog <- speciesthermsitedt[,list(ctiavg=mean(q_0.5),
+                                                sdcti=sd(q_0.5),
+                                                str=mean(q_0.9-q_0.1),
+                                                sstavg=mean(site_current),
+                                                nspp=.N,
+                                                pgt90now=sum(site_current>q_0.9)/.N,
+                                                pgt90ssp1d50=sum(site_ssp126_dec50>q_0.9)/.N,
+                                                pgt90ssp1d100=sum(site_ssp126_dec100>q_0.9)/.N,
+                                                pgt90ssp2d50=sum(site_ssp245_dec50>q_0.9)/.N,
+                                                pgt90ssp2d100=sum(site_ssp245_dec100>q_0.9)/.N,
+                                                pgt90ssp3d50=sum(site_ssp370_dec50>q_0.9)/.N,
+                                                pgt90ssp3d100=sum(site_ssp370_dec100>q_0.9)/.N,
+                                                pgt90ssp4d50=sum(site_ssp460_dec50>q_0.9)/.N,
+                                                pgt90ssp4d100=sum(site_ssp460_dec100>q_0.9)/.N,
+                                                pgt90ssp5d50=sum(site_ssp585_dec50>q_0.9)/.N,
+                                                pgt90ssp5d100=sum(site_ssp585_dec100>q_0.9)/.N),
+                                          by=c("higherGeography","where")]
+
+sthighergeog$where <- as.factor(sthighergeog$where)
+sthighergeog$higherGeography <- as.factor(sthighergeog$higherGeography)
+
+sthighergeog_l <- data.table(tidyr::pivot_longer(sthighergeog,
+                                                   cols = 8:18,
+                                                   names_to = "scenario", values_to = "paf"))
+
+sthighergeog_l50 <- sthighergeog_l[grepl("d50|now", scenario),,]
+sthighergeog_l100 <- sthighergeog_l[grepl("d100|now", scenario),,]
+
+sthighergeog_l50$scenario <- as.factor(sthighergeog_l50$scenario)
+sthighergeog_l100$scenario <- as.factor(sthighergeog_l100$scenario)
+
+boxplot(paf ~ scenario, data = sthighergeog_l50)
+```
+
+Try again the same models:
+
+```{r}
+paf_lm1_rs <- glm(paf ~ scenario, data = sthighergeog_l50, family = binomial(), weights = nspp)
+
+summary(paf_lm1_rs)
+```
+
+Check the residuals:
+
+```{r fig.height=6}
+par(mfrow = c(2,2))
+plot(paf_lm1_rs)
+```
+
+QQ plot is not good, but the rest is ok.
+
+Model considering the source of the data:
+
+```{r}
+paf_lm2_rs <- glm(paf ~ scenario + where, data = sthighergeog_l50, family = binomial(), weights = nspp)
+
+summary(paf_lm2_rs)
+```
+
+Check the residuals:
+
+```{r fig.height=6}
+par(mfrow = c(2,2))
+plot(paf_lm2_rs)
+```
+
+Try to include the interaction between "where" and "scenario":
+
+```{r}
+paf_lm3_rs <- glm(paf ~ scenario*where, data = sthighergeog_l50, family = binomial(), weights = nspp)
+
+summary(paf_lm3_rs)
+```
+
+Check residuals:
+
+```{r fig.height=6}
+par(mfrow = c(2,2))
+plot(paf_lm3_rs)
+```
+
+Try a Linear Mixed-Effects model. In this case, we will focus in modelling PAF ~ scenario, with "where" as a random effect.
+
+```{r}
+paf_lme1_rs <- glmer(paf ~ scenario + (1|where), data = sthighergeog_l50, family = binomial(),
+                  weights = nspp)
+
+summary(paf_lme1_rs)
+```
+
+The source does explain some of the variation, but not a great amount compared to the scenarios.
+
+```{r}
+par(mfrow = c(1,2))
+plot(paf_lme1_rs)
+qqnorm(resid(paf_lme1_rs))
+qqline(resid(paf_lme1_rs))
+```
+
+Try now a model with higherGeography as a random effect:
+
+```{r}
+paf_lme2_rs <- glmer(paf ~ scenario + (1|higherGeography), data = sthighergeog_l50, family = binomial(), weights = nspp)
+
+summary(paf_lme2_rs)
+```
+
+The higherGeography have even more influence on the values of PAF.
+
+Check residuals:
+
+```{r}
+par(mfrow = c(1,2))
+plot(paf_lme2_rs)
+qqnorm(resid(paf_lme2_rs))
+qqline(resid(paf_lme2_rs))
+```
+
+
+## Thermal limits: extracted X experimental
+
+I obtained the thermal limits from the [GlobTherm dataset](https://datadryad.org/stash/dataset/doi:10.5061/dryad.1cv08).
+
+```{r}
+suppressPackageStartupMessages(library(dplyr))
+
+# Get only unique species - because we will use only the thermal limits, we can get from the speciesthermsitedt table
+species_filt <- speciesthermsitedt[!duplicated(speciesthermsitedt$species),]
+
+# Load the GlobTherm dataset
+globtherm <- suppressMessages(suppressWarnings(readxl::read_xlsx("~/Downloads/GlobalTherm_upload_10_11_17.xlsx")))
+globtherm_sp <- paste(globtherm$Genus, globtherm$Species)
+
+# See which species are available
+gt_sel <- which(globtherm_sp %in% species_filt$species)
+gt_sel <- globtherm[gt_sel,]
+gt_sel <- gt_sel %>%
+  mutate(species = globtherm_sp[globtherm_sp %in% species_filt$species]) %>%
+  select(species, Tmax, max_metric)
+
+# See which metrics are available
+table(gt_sel$max_metric)
+
+# Select only those that are on our list
+species_filt_sel <- species_filt[species_filt$species %in% gt_sel$species,]
+species_filt_sel <- species_filt_sel %>%
+  select(species, q_0.9)
+
+# Join both tables
+tlimits <- species_filt_sel %>%
+  left_join(gt_sel) %>%
+  filter(!is.na(Tmax))
+
+nrow(tlimits)
+
+# Plot
+plot(tlimits$q_0.9 ~ tlimits$Tmax, xlim = c(0, 40), ylim = c(0,40))
+abline(a = 0, b = 1)
+
+m1 <- lm(q_0.9~Tmax, data = tlimits)
+abline(m1, col = "red")
+```
+
+We see that for a great portion of the species, the species thermal maxima is actually much higher than the one we estimated through the occurrence data.
+
+It is also possible to use only "CTmax":
+
+```{r}
+
+gt_sel_ctmax <- gt_sel %>%
+              filter(max_metric == "ctmax")
+
+# Join both tables
+tlimits_ctmax <- species_filt_sel %>%
+  left_join(gt_sel_ctmax) %>%
+  filter(!is.na(Tmax))
+
+nrow(tlimits_ctmax)
+
+# Plot
+plot(tlimits_ctmax$q_0.9 ~ tlimits_ctmax$Tmax, xlim = c(0, 40), ylim = c(0,40))
+abline(a = 0, b = 1)
+
+m2 <- lm(q_0.9~Tmax, data = tlimits_ctmax)
+abline(m1, col = "red")
+```
+
