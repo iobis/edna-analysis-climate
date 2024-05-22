@@ -29,6 +29,7 @@ summary(funcdiv$DepthRangeDeep)
 
 # Select shallow water species
 summary(funcdiv$DepthRangeDeep) # There are 1348 species with NA values
+#funcdiv$DepthRangeDeep[is.na(funcdiv$DepthRangeDeep)] <- 0
 
 # Limit to those with maximum depth 200m
 sel_species <- funcdiv %>%
@@ -175,6 +176,8 @@ sites_sst$point_class <- factor(sites_sst$point_class, levels = c("not_risk", "s
 # Make plots ----
 # Left plot - dots
 plot_a <- plot_obj %>%
+  group_by(higherGeography) %>%
+  distinct(species, .keep_all = T) %>%
   ggplot() +
   geom_violinhalf(aes(x = higherGeography, y = q_0.95),
                   position = position_nudge(x = 0.3)) +
